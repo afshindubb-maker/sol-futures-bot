@@ -6,8 +6,10 @@ import requests
 import pandas as pd
 from datetime import datetime
 from dotenv import load_dotenv
-from telegram import Update
-from telegram.ext import Application, CommandHandler, ContextTypes
+from telegram import Update, ReplyKeyboardMarkup
+from telegram.ext import (
+    Application, CommandHandler, ContextTypes, MessageHandler, filters
+)
 
 load_dotenv()
 TOKEN = os.getenv("BOT_TOKEN")
@@ -27,6 +29,16 @@ CSV_FIELDS = [
 ]
 CHAT_IDS = set()
 LAST_ALERT_STATUS = {}
+
+MAIN_MENU = ReplyKeyboardMarkup(
+    [
+        ["📊 تحلیل بازار SOL"],
+        ["💰 قیمت لحظه‌ای", "📜 پنج تحلیل آخر"],
+        ["ℹ️ راهنما"]
+    ],
+    resize_keyboard=True,
+    is_persistent=True
+)
 
 def save_history(d):
     file_exists = os.path.exists(HISTORY_FILE)
@@ -233,10 +245,9 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text(
         "سلام! ربات تحلیل فیوچرز SOL فعال است.\n\n"
-        "/price - قیمت لحظه‌ای\n"
-        "/analyze - تحلیل بازار\n"
-        "/history - تاریخچه ۵ تحلیل آخر\n"
-        "/help - راهنما"
+        "از دکمه‌های زیر برای استفاده از ربات انتخاب کن.\n"
+        "دستورهای متنی قبلی هم همچنان فعال هستند.",
+        reply_markup=MAIN_MENU
     )
 
 async def price(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -261,7 +272,6 @@ async def price(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def analyze(update: Update, context: ContextTypes.DEFAULT_TYPE):
     CHAT_IDS.add(update.effective_chat.id)
 
-    await update.message.reply_text("در حال بررسی بازار SOL ...")
     await update.message.reply_text("در حال بررسی بازار SOL ...")
 
     try:
@@ -418,12 +428,28 @@ async def automatic_check(context: ContextTypes.DEFAULT_TYPE):
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "/start - شروع\n"
-        "/price - قیمت SOL\n"
-        "/analyze - تحلیل بازار\n"
-        "/history - پنج تحلیل آخر\n"
-        "/help - راهنما"
+        "راهنمای ربات تحلیل فیوچرز SOL\n\n"
+        "📊 تحلیل بازار SOL: بررسی چندتایم‌فریمی بازار\n"
+        "💰 قیمت لحظه‌ای: دریافت قیمت SOL از Toobit\n"
+        "📜 پنج تحلیل آخر: نمایش تاریخچه تحلیل‌ها\n\n"
+        "دستورهای متنی: /price ، /analyze ، /history ، /help",
+        reply_markup=MAIN_MENU
     )
+
+
+async def menu_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    text = update.message.text
+
+    if text == "📊 تحلیل بازار SOL":
+        await analyze(update, context)
+    elif text == "💰 قیمت لحظه‌ای":
+        await price(update, context)
+    elif text == "📜 پنج تحلیل آخر":
+        await history(update, context)
+    elif text == "ℹ️ راهنما":
+        await help_command(update, context)
+
+
 def main():
     if not TOKEN:
         raise ValueError("BOT_TOKEN تنظیم نشده است")
@@ -435,6 +461,7 @@ def main():
     app.add_handler(CommandHandler("analyze", analyze))
     app.add_handler(CommandHandler("history", history))
     app.add_handler(CommandHandler("help", help_command))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, menu_router))
 
     # بررسی خودکار هر ۵ دقیقه
     app.job_queue.run_repeating(
